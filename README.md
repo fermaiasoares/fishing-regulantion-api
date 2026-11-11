@@ -4,7 +4,7 @@ API do MVP para consulta de regras de pesca. A primeira etapa prepara a infraest
 
 ## Desenvolvimento
 
-Use Docker com o plugin Compose v2. Execute os comandos na raiz do repositório.
+A API usa Laravel 13 e PHP 8.3 no Compose. Use Docker com o plugin Compose v2. Execute os comandos na raiz do repositório.
 
 ```sh
 cp -n infrastructure/.env.example infrastructure/.env
