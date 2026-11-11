@@ -42,7 +42,9 @@ services:
       DB_DATABASE: ${POSTGRES_DB:-fishing}
       DB_USERNAME: ${POSTGRES_USER:-fishing}
       DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      REDIS_CLIENT: predis
       REDIS_HOST: redis
+      CACHE_STORE: redis
       QUEUE_CONNECTION: redis
       APP_ENV: local
       APP_DEBUG: "true"
