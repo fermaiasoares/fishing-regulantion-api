@@ -4,7 +4,7 @@ on:
   push:
     branches: [master, 'feat/**', 'fix/**', 'chore/**']
   pull_request:
-    branches: [master]
+    branches: [master, 'feat/laravel-bootstrap']
   workflow_dispatch:
 
 permissions:
@@ -15,92 +15,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  compose:
-    name: Validate Compose and infrastructure
+  laravel:
+    name: Compose, PostGIS, Redis and Laravel
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
+      POSTGRES_DB: fishing_test
       POSTGRES_PASSWORD: ci-local-only-password
     steps:
       - uses: actions/checkout@v4
       - name: Validate Compose syntax
         run: docker compose -f infrastructure/compose.yaml config --quiet
-      - name: Start PostGIS and Redis
-        run: docker compose -f infrastructure/compose.yaml up -d --wait db redis
-      - name: Verify PostGIS extension and Redis
+      - name: Prepare Laravel environment
+        run: cp apps/api/.env.example apps/api/.env
+      - name: Build the API and start dependencies
         run: |
-          docker compose -f infrastructure/compose.yaml exec -T db psql -U fishing -d fishing -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS postgis; SELECT PostGIS_Version();'
-          test "$(docker compose -f infrastructure/compose.yaml exec -T redis redis-cli ping | tr -d '\r')" = PONG
+          docker compose -f infrastructure/compose.yaml build api
+          docker compose -f infrastructure/compose.yaml up -d --wait db redis
+      - name: Install locked dependencies
+        run: docker compose -f infrastructure/compose.yaml run --rm --no-deps api composer install --no-interaction --prefer-dist --no-progress
+      - name: Generate an ephemeral application key
+        run: docker compose -f infrastructure/compose.yaml run --rm --no-deps api php artisan key:generate --force
+      - name: Enable PostGIS
+        run: docker compose -f infrastructure/compose.yaml exec -T db psql -U fishing -d fishing_test -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS postgis;'
+      - name: Run migrations
+        run: docker compose -f infrastructure/compose.yaml run --rm --no-deps api php artisan migrate --force
+      - name: Start API and verify readiness
+        run: |
+          docker compose -f infrastructure/compose.yaml up -d api
+          curl --fail --silent --show-error --retry 10 --retry-all-errors --retry-max-time 60 http://127.0.0.1:8000/api/health
+      - name: Run Laravel tests
+        run: docker compose -f infrastructure/compose.yaml exec -T api php artisan test
+      - name: Audit Composer dependencies
+        run: docker compose -f infrastructure/compose.yaml exec -T api composer audit --locked
       - name: Logs on failure
         if: failure()
         run: docker compose -f infrastructure/compose.yaml logs --no-color
-      - name: Stop services
+      - name: Stop ephemeral CI services
         if: always()
         run: docker compose -f infrastructure/compose.yaml down -v --remove-orphans
-
-  laravel:
-    name: Laravel checks (when initialized)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: apps/api
-    services:
-      postgres:
-        image: postgis/postgis:16-3.4
-        env:
-          POSTGRES_DB: fishing_test
-          POSTGRES_USER: fishing
-          POSTGRES_PASSWORD: ci-local-only-password
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U fishing -d fishing_test"
-          --health-interval 5s --health-timeout 3s --health-retries 15
-      redis:
-        image: redis:7-alpine
-        ports: ['6379:6379']
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s --health-timeout 3s --health-retries 15
-    env:
-      APP_ENV: testing
-      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
-      DB_CONNECTION: pgsql
-      DB_HOST: 127.0.0.1
-      DB_PORT: 5432
-      DB_DATABASE: fishing_test
-      DB_USERNAME: fishing
-      DB_PASSWORD: ci-local-only-password
-      REDIS_HOST: 127.0.0.1
-      CACHE_STORE: database
-      SESSION_DRIVER: array
-      QUEUE_CONNECTION: sync
-    steps:
-      - uses: actions/checkout@v4
-      - name: Detect Laravel application
-        id: app
-        run: |
-          if test -f composer.json && test -f artisan; then echo 'ready=true' >> "$GITHUB_OUTPUT"; else echo 'ready=false' >> "$GITHUB_OUTPUT"; fi
-      - name: Set up PHP
-        if: steps.app.outputs.ready == 'true'
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.3'
-          extensions: mbstring, pdo_pgsql, intl, zip, redis
-          coverage: none
-      - name: Install Composer dependencies
-        if: steps.app.outputs.ready == 'true'
-        run: composer install --no-interaction --prefer-dist --no-progress
-      - name: Enable PostGIS
-        if: steps.app.outputs.ready == 'true'
-        run: PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -U "$DB_USERNAME" -d "$DB_DATABASE" -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS postgis;'
-      - name: Run migrations
-        if: steps.app.outputs.ready == 'true'
-        run: php artisan migrate --force
-      - name: Run tests
-        if: steps.app.outputs.ready == 'true'
-        run: php artisan test
-      - name: Laravel not yet initialized
-        if: steps.app.outputs.ready != 'true'
-        run: |
-          echo "Laravel pending in apps/api; tests will run once composer.json and artisan exist."
