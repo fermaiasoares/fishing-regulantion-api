@@ -28,3 +28,9 @@ python3 -m unittest discover -s tests -v
 ```
 
 Os testes usam um ZIP local para verificar a coleta de metadados e o tratamento de erros. A validação das geometrias e a publicação no PostGIS são acompanhadas na [issue #4](https://github.com/fermaiasoares/fishing-regulation-api/issues/4).
+
+## Validação com fontes oficiais no GitHub Actions
+
+O workflow **Official hydrography sources** roda em PRs que alteram o serviço ou o workflow e pode ser disparado manualmente quando estiver disponível na branch padrão. Ele verifica o ZIP oficial do IBGE e consulta até dez trechos da BHO6 em um retângulo no entorno de Caratinga (MG).
+
+O resumo registra URL, horário, SHA-256, CRS e contagem de registros para cada coleta. O artefato `official-hydrography-evidence` contém os relatórios e a resposta da ANA. A contagem do IBGE é do arquivo nacional de nível 2. A checagem verifica a integridade dos downloads, os componentes do shapefile e as polilinhas da amostra. A carga no PostGIS é acompanhada na issue #4.

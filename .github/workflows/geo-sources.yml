@@ -1,0 +1,50 @@
+name: Official hydrography sources
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - 'services/geo-ingestion/**'
+      - '.github/workflows/geo-sources.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  acquisition:
+    name: Verify official downloads
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check IBGE BHB250 archive
+        working-directory: services/geo-ingestion
+        run: |
+          python3 check_official_sources.py ibge "$RUNNER_TEMP/hydrography"
+          {
+            echo '### IBGE BHB250'
+            echo '```json'
+            cat "$RUNNER_TEMP/hydrography/ibge-report.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Check ANA BHO6 sample
+        if: ${{ !cancelled() }}
+        working-directory: services/geo-ingestion
+        run: |
+          python3 check_official_sources.py ana "$RUNNER_TEMP/hydrography"
+          {
+            echo '### ANA BHO6'
+            echo '```json'
+            cat "$RUNNER_TEMP/hydrography/ana-report.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload acquisition evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-hydrography-evidence
+          path: |
+            ${{ runner.temp }}/hydrography/*-report.json
+            ${{ runner.temp }}/hydrography/ana-sample.json
+          retention-days: 14
