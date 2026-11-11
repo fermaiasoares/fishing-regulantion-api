@@ -102,4 +102,5 @@ jobs:
         run: php artisan test
       - name: Laravel not yet initialized
         if: steps.app.outputs.ready != 'true'
-        run: echo 'Laravel pending in apps/api (Issue #2); test steps will run once composer.json and artisan exist.'
+        run: |
+          echo "Laravel pending in apps/api; tests will run once composer.json and artisan exist."
