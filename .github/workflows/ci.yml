@@ -24,6 +24,9 @@ jobs:
       POSTGRES_PASSWORD: ci-local-only-password
     steps:
       - uses: actions/checkout@v4
+      - name: Test IBGE source acquisition
+        working-directory: services/geo-ingestion
+        run: python3 -m unittest discover -s tests -v
       - name: Validate Compose syntax
         run: docker compose -f infrastructure/compose.yaml config --quiet
       - name: Prepare Laravel environment
