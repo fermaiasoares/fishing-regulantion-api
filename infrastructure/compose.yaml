@@ -1,0 +1,76 @@
+name: fishing-regulations
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-fishing}
+      POSTGRES_USER: ${POSTGRES_USER:-fishing}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  api:
+    build:
+      context: ..
+      dockerfile: infrastructure/docker/php/Dockerfile
+    working_dir: /app
+    volumes:
+      - ../apps/api:/app
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    environment:
+      DB_CONNECTION: pgsql
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_DATABASE: ${POSTGRES_DB:-fishing}
+      DB_USERNAME: ${POSTGRES_USER:-fishing}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      QUEUE_CONNECTION: redis
+      APP_ENV: local
+      APP_DEBUG: "true"
+    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+  geo-worker:
+    build:
+      context: ..
+      dockerfile: infrastructure/docker/python/Dockerfile
+    working_dir: /workspace
+    volumes:
+      - ../services/geo-ingestion:/workspace
+      - geo_data:/data
+    environment:
+      PGHOST: db
+      PGPORT: 5432
+      PGDATABASE: ${POSTGRES_DB:-fishing}
+      PGUSER: ${POSTGRES_USER:-fishing}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    command: ["sleep", "infinity"]
+    depends_on:
+      db:
+        condition: service_healthy
+volumes:
+  postgres_data:
+  redis_data:
+  geo_data:
