@@ -39,13 +39,19 @@ jobs:
       - name: Enable PostGIS
         run: docker compose -f infrastructure/compose.yaml exec -T db psql -U fishing -d fishing_test -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS postgis;'
       - name: Run migrations
-        run: docker compose -f infrastructure/compose.yaml run --rm --no-deps api php artisan migrate --force
+        run: docker compose -f infrastructure/compose.yaml run --rm --no-deps api php artisan migrate --force --step
       - name: Start API and verify readiness
         run: |
           docker compose -f infrastructure/compose.yaml up -d api
           curl --fail --silent --show-error --retry 10 --retry-all-errors --retry-max-time 60 http://127.0.0.1:8000/api/health
       - name: Run Laravel tests
         run: docker compose -f infrastructure/compose.yaml exec -T api php artisan test
+      - name: Verify geographic migration rollback and reapply
+        run: |
+          docker compose -f infrastructure/compose.yaml exec -T api php artisan migrate:rollback --force --step=2
+          result="$(docker compose -f infrastructure/compose.yaml exec -T db psql -U fishing -d fishing_test -v ON_ERROR_STOP=1 -Atc "SELECT to_regclass('geographic_datasets') IS NULL AND to_regclass('geographic_dataset_versions') IS NULL AND to_regclass('hydrographic_basins') IS NULL AND to_regclass('river_segments') IS NULL AND PostGIS_Version() IS NOT NULL")"
+          test "$result" = t
+          docker compose -f infrastructure/compose.yaml exec -T api php artisan migrate --force --step
       - name: Audit Composer dependencies
         run: docker compose -f infrastructure/compose.yaml exec -T api composer audit --locked
       - name: Logs on failure

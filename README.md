@@ -27,3 +27,7 @@ Edite a senha local em `infrastructure/.env` antes da primeira subida. Gere a ch
 O GitHub Actions usa um banco efêmero `fishing_test` e executa a validação do Compose, as migrations, uma consulta HTTP real e a suíte Laravel. Na aba **Checks** do PR, abra **Compose, PostGIS, Redis and Laravel** para ver o passo que falhou e os logs dos serviços. A aba **Actions** também lista execuções por branch e commit.
 
 Para diagnóstico local, use `docker compose --env-file infrastructure/.env -f infrastructure/compose.yaml ps` e `docker compose --env-file infrastructure/.env -f infrastructure/compose.yaml logs api db redis`. Rode a suíte com `docker compose --env-file infrastructure/.env -f infrastructure/compose.yaml exec -T api php artisan test` em um ambiente de testes isolado, com as migrations aplicadas.
+
+## Geografia
+
+Consulte a [modelagem geográfica](docs/geography.md) para o esquema de versionamento, a política de CRS e o significado dos resultados das consultas espaciais.
